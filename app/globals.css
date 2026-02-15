@@ -2,11 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 기본 배경을 네이버 느낌으로 통일 */
-html, body {
-  height: 100%;
-}
-
 body {
   @apply bg-[#f5f6f7] text-gray-900 antialiased;
 }
