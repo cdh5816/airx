@@ -1,23 +1,20 @@
-// (c) AIRX (individual business) - Owned by the user. All rights reserved.
+/* ============================================================================
+ * OREX (Organized Real-time EXecution)
+ * Copyright (c) AIRX (개인사업자). All rights reserved.
+ * ========================================================================== */
 
-import "@/app/globals.css";
-import type { ReactNode } from "react";
-import { Inter } from "next/font/google";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-});
+import "./globals.css";
+import React from "react";
 
 export const metadata = {
-  title: "COREX",
-  description: "Control the Core. Everything starts here.",
+  title: "OREX",
+  description: "Organized Real-time EXecution",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body className={inter.className}>{children}</body>
+      <body>{children}</body>
     </html>
   );
 }
