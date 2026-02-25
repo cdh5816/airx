@@ -1,5 +1,4 @@
-// Prisma schema for Enterprise Management System
-
+// © AIRX (individual business). All rights reserved.
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,208 +8,180 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Enumerations --------------------------------------------------------------
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+  sites     Site[]
+  documents Document[]
+  // ... other relations
+}
+
+model User {
+  id                String   @id @default(cuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id])
+  username          String   @unique
+  passwordHash      String
+  role              Role
+  mustChangePassword Boolean @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime @default(now())
+  notifications     Notification[]
+  favorites         Favorite[]
+  auditLogs         AuditLog[] @relation("actor")
+}
+
 enum Role {
+  SUPER_ADMIN
+  MID_ADMIN
   ADMIN
-  SALES_TEAM
-  ORDER_TEAM
-  CONSTRUCTION_TEAM
-  PRODUCTION_TEAM
-  PAINT_SHIPPING_TEAM
-  PARTNER
-  CUSTOMER
+  STAFF
+  CLIENT
+}
+
+model GuestUser {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  username   String
+  memo       String
+  isActive   Boolean  @default(true)
+  lastLoginAt DateTime?
+  createdAt  DateTime @default(now())
+  accesses   GuestSiteAccess[]
+}
+
+model Site {
+  id            String   @id @default(cuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id])
+  name          String
+  address       String?
+  status        SiteStatus @default(ONGOING)
+  assigneeUserId String?
+  createdAt     DateTime @default(now())
+  requests      Request[]
+  documents     Document[]
 }
 
 enum SiteStatus {
-  SALES_IN_PROGRESS
-  CONTRACT_SIGNED
-  CONSTRUCTION_IN_PROGRESS
-  CONSTRUCTION_COMPLETED
+  ONGOING
+  CONTRACTED
+  CONSTRUCTION
+  COMPLETED
+  CLOSED
 }
 
-enum ShipmentStatus {
-  DRAFT
-  ASSIGNED
-  CONFIRMED
+model GuestSiteAccess {
+  id        String  @id @default(cuid())
+  companyId String
+  guestId   String
+  siteId    String
+  createdAt DateTime @default(now())
+  @@unique([guestId, siteId])
+}
+
+model Document {
+  id            String   @id @default(cuid())
+  companyId     String
+  siteId        String
+  type          DocumentType
+  isPublicToGuest Boolean @default(false)
+  fileUrl       String
+  createdAt     DateTime @default(now())
+}
+
+enum DocumentType {
+  START
+  COMPLETION
+  REPORT
+  OTHER
+}
+
+model Request {
+  id             String   @id @default(cuid())
+  companyId      String
+  siteId         String
+  createdByType  CreatedByType
+  createdById    String
+  content        String
+  status         RequestStatus @default(PENDING)
+  createdAt      DateTime @default(now())
+}
+
+enum CreatedByType {
+  USER
+  GUEST
 }
 
 enum RequestStatus {
   PENDING
   IN_PROGRESS
-  COMPLETED
-}
-
-enum NotificationType {
-  REQUEST_CREATED
-  REQUEST_UPDATED
-  STATUS_CHANGED
-}
-
-/// Models --------------------------------------------------------------------
-model User {
-  id           String   @id @default(uuid())
-  name         String
-  role         Role
-  position     String?
-  company      String?  // 조직/부서/고객사명
-  employeeId   String?  // 사번 (내부만 필수, 외부 선택)
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  sitesCreated      Site[]           @relation("SiteCreator")
-  customerSites     Site[]           @relation("SiteCustomer")
-  shipments         Shipment[]       @relation("ShipmentCreator")
-  notes             SpecialNote[]    @relation("NoteAuthor")
-  requestsCreated   Request[]        @relation("RequestAuthor")
-  requestsAssigned  Request[]        @relation("RequestAssignee")
-  documents         Document[]       @relation("DocumentUploader")
-  notifications     Notification[]
-  auditLogs         AuditLog[]
-  smsLogs           SMSLog[]
-  productionPlans   ProductionPlan[] @relation("ProductionPlanUpdater")
-}
-
-model Site {
-  id             String       @id @default(uuid())
-  name           String
-  address        String
-  contractVolume Float
-  panelType      String
-  status         SiteStatus   @default(SALES_IN_PROGRESS)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  creatorId      String
-  creator        User         @relation("SiteCreator", fields: [creatorId], references: [id])
-
-  customerId     String?
-  customer       User?        @relation("SiteCustomer", fields: [customerId], references: [id])
-
-  // Relations
-  shipments      Shipment[]
-  notes          SpecialNote[]
-  requests       Request[]
-  documents      Document[]
-  productionPlan ProductionPlan?
-}
-
-model Shipment {
-  id            String          @id @default(uuid())
-  siteId        String
-  site          Site            @relation(fields: [siteId], references: [id])
-  sequence      Int
-  plannedVolume Float
-  actualVolume  Float?
-  plannedDate   DateTime
-  status        ShipmentStatus @default(DRAFT)
-  assignedAt    DateTime?
-  confirmedAt   DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-
-  creatorId     String
-  creator       User            @relation("ShipmentCreator", fields: [creatorId], references: [id])
-
-  // Logistic details
-  driverName      String?
-  driverPhone     String?
-  vehicleType     String?
-  vehicleNumber   String?
-  recipientName   String?
-  recipientPhone  String?
-  expectedArrival DateTime?
-
-  // Relations
-  smsLogs        SMSLog[]
-}
-
-model SpecialNote {
-  id        String   @id @default(uuid())
-  siteId    String
-  site      Site     @relation(fields: [siteId], references: [id])
-  authorId  String
-  author    User     @relation("NoteAuthor", fields: [authorId], references: [id])
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Request {
-  id          String        @id @default(uuid())
-  siteId      String
-  site        Site          @relation(fields: [siteId], references: [id])
-  authorId    String
-  author      User          @relation("RequestAuthor", fields: [authorId], references: [id])
-  title       String
-  description String
-  status      RequestStatus @default(PENDING)
-  assigneeId  String?
-  assignee    User?         @relation("RequestAssignee", fields: [assigneeId], references: [id])
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-}
-
-model Document {
-  id                String   @id @default(uuid())
-  siteId            String
-  site              Site     @relation(fields: [siteId], references: [id])
-  uploaderId        String
-  uploader          User     @relation("DocumentUploader", fields: [uploaderId], references: [id])
-  name              String
-  url               String
-  visibleToCustomer Boolean  @default(false)
-  uploadedAt        DateTime @default(now())
+  DONE
 }
 
 model Notification {
-  id        String          @id @default(uuid())
+  id        String   @id @default(cuid())
+  companyId String
   userId    String
-  user      User            @relation(fields: [userId], references: [id])
-  type      NotificationType
+  targetUrl String
   title     String
-  message   String
-  link      String?
-  isRead    Boolean         @default(false)
-  createdAt DateTime        @default(now())
+  createdAt DateTime @default(now())
+  isRead    Boolean  @default(false)
+}
+
+model Favorite {
+  id        String @id @default(cuid())
+  companyId String
+  userId    String
+  siteId    String
+  createdAt DateTime @default(now())
+  @@unique([userId, siteId])
+}
+
+model PasswordChangeRequest {
+  id               String   @id @default(cuid())
+  companyId        String
+  requesterUserId  String
+  newPasswordHash  String
+  status           PCRStatus @default(PENDING)
+  decidedByUserId  String?
+  reason           String?
+  createdAt        DateTime @default(now())
+  decidedAt        DateTime?
+}
+
+enum PCRStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model LeaveRequest {
+  id        String @id @default(cuid())
+  companyId String
+  userId    String
+  type      String
+  dateFrom  DateTime
+  dateTo    DateTime
+  status    String
+}
+
+model Attendance {
+  id        String @id @default(cuid())
+  companyId String
+  userId    String
+  type      String
+  at        DateTime
 }
 
 model AuditLog {
-  id          String   @id @default(uuid())
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  action      String
-  model       String
-  recordId    String
-  description String?
-  changes     Json?
-  createdAt   DateTime @default(now())
-}
-
-model SMSLog {
-  id         String   @id @default(uuid())
-  phone      String
-  message    String
-  payload    Json?
-  success    Boolean  @default(true)
+  id         String   @id @default(cuid())
+  companyId  String
+  actorUserId String
+  action     String
+  payloadJson String?
   createdAt  DateTime @default(now())
-
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
-
-  shipmentId String?
-  shipment   Shipment? @relation(fields: [shipmentId], references: [id])
-}
-
-model ProductionPlan {
-  siteId                  String   @id
-  site                    Site     @relation(fields: [siteId], references: [id])
-  plannedProductionVolume Float?
-  plannedPaintVolume      Float?
-  plannedShipmentVolume   Float?
-  updatedById             String?
-  updatedBy               User?    @relation("ProductionPlanUpdater", fields: [updatedById], references: [id])
-  updatedAt               DateTime @default(now())
 }
