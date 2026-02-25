@@ -1,46 +1,66 @@
-import bcrypt from 'bcryptjs';
+// © AIRX (individual business). All rights reserved.
+import { cookies } from 'next/headers';
+import { compare, hash } from 'bcryptjs';
+import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
-import { prisma } from './db';
 
-const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-secret';
-const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || '10', 10);
+const prisma = new PrismaClient();
 
-export type SessionUser = {
-  id: string;
-  role: string;
+const INTERNAL_SECRET = process.env.INTERNAL_AUTH_SECRET!;
+const GUEST_SECRET = process.env.GUEST_AUTH_SECRET!;
+
+export type SessionPayload = {
+  userId: string;
+  companyId?: string;
+  role?: string;
+  type: 'INTERNAL' | 'GUEST';
+  activeCompanyId?: string | null;
 };
 
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
+export function signInternalSession(payload: SessionPayload) {
+  return jwt.sign(payload, INTERNAL_SECRET, { expiresIn: '8h' });
 }
 
-export async function comparePassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+export function signGuestSession(payload: SessionPayload) {
+  return jwt.sign(payload, GUEST_SECRET, { expiresIn: '8h' });
 }
 
-export function generateToken(payload: SessionUser): string {
-  return jwt.sign(payload, AUTH_SECRET, { expiresIn: '7d' });
+export function verifyInternalSession(token: string) {
+  return jwt.verify(token, INTERNAL_SECRET) as SessionPayload;
 }
 
-export function verifyToken(token: string): SessionUser | null {
-  try {
-    return jwt.verify(token, AUTH_SECRET) as SessionUser;
-  } catch (err) {
-    return null;
+export function verifyGuestSession(token: string) {
+  return jwt.verify(token, GUEST_SECRET) as SessionPayload;
+}
+
+export async function setSessionCookie(res: any, token: string, type: 'INTERNAL' | 'GUEST') {
+  // In App Router, set cookie via Response headers in API routes.
+  // Helper provided for server handlers.
+  const cookieName = type === 'INTERNAL' ? 'lookup9_internal' : 'lookup9_guest';
+  res.headers.append('Set-Cookie', `${cookieName}=${token}; Path=/; HttpOnly; SameSite=Lax; Secure`);
+}
+
+export async function hashPassword(plain: string) {
+  return await hash(plain, 10);
+}
+
+export async function verifyPassword(plain: string, hashed: string) {
+  return await compare(plain, hashed);
+}
+
+// helper to get session from request cookies (server-side)
+export function getSessionFromCookies(cookieHeader: string | null) {
+  if (!cookieHeader) return null;
+  const cookiesObj: Record<string,string> = {};
+  cookieHeader.split(';').forEach((c) => {
+    const [k,v] = c.split('=').map(s=>s.trim());
+    if (k && v) cookiesObj[k] = v;
+  });
+  if (cookiesObj['lookup9_internal']) {
+    try { return verifyInternalSession(cookiesObj['lookup9_internal']); } catch { return null; }
   }
-}
-
-/**
- * Authenticate a user using email/password. Throws if invalid credentials.
- */
-export async function authenticateUser(email: string, password: string) {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    throw new Error('Invalid credentials');
+  if (cookiesObj['lookup9_guest']) {
+    try { return verifyGuestSession(cookiesObj['lookup9_guest']); } catch { return null; }
   }
-  const valid = await comparePassword(password, user.passwordHash);
-  if (!valid) {
-    throw new Error('Invalid credentials');
-  }
-  return user;
+  return null;
 }
